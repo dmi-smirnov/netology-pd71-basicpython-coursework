@@ -107,7 +107,7 @@ class VKuser():
       self.screen_name)
     return self.user_id
 
-  def get_albums(self, api_token):
+  def get_albums(self, api_token, albums: list=None):
     api_method = 'photos.getAlbums'
     api_req_url = self.api_url + '/' + api_method + '/'
     user_id = self.get_user_id(api_token)
@@ -116,9 +116,13 @@ class VKuser():
     api_req_params = {
       'v': self.api_version,
       'access_token': api_token,
-      'owner_id': user_id,
-      'need_system': 1
+      'owner_id': user_id
     }
+    if albums:
+      album_ids = ','.join(albums)
+      api_req_params['album_ids'] = album_ids
+    else:
+      api_req_params['need_system'] = 1
 
     api_resp = requests.get(api_req_url, params=api_req_params)
 
@@ -169,8 +173,14 @@ class VKuser():
 
     return api_resp.json()['response']['items']
 
-  def backup_photos_to_cloud(self, api_token: str, cloud: Cloud, album_photos_max_amt=5):
-    albums = self.get_albums(api_token)
+  def backup_photos_to_cloud(self, api_token: str, cloud: Cloud,
+    album_photos_max_amt=5, only_profile_photos=False):
+    if only_profile_photos:
+      profile_photos_album_id = '-6'
+      albums = \
+        self.get_albums(api_token, albums=[profile_photos_album_id])
+    else:
+      albums = self.get_albums(api_token)
     if albums is None:
       return
     
