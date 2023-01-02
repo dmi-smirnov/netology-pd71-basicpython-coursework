@@ -1,6 +1,6 @@
-import sys
 import requests
 import time
+import json
 from pprint import pprint
 
 class Cloud():
@@ -53,6 +53,38 @@ class Yadisk(Cloud):
       print(f'Error Yandex Disk API method {api_route}: '
       f'HTTP request status code is {api_req_status_code}')
       return 1
+    
+  def get_upload_url(self, file_path):
+    api_route = '/v1/disk/resources/upload'
+    api_req_url = self.api_url + api_route
+    api_req_headers = {'Authorization': self.cloud_token}
+    api_req_params = {
+      'path': file_path
+      }
+
+    api_resp = requests.get(api_req_url, headers=api_req_headers,
+    params=api_req_params)
+
+    api_req_status_code = api_resp.status_code
+    if api_req_status_code != 200:
+      print(f'Error Yandex Disk API method {api_route}: '
+      f'HTTP request status code is {api_req_status_code}')
+      return 1
+
+    return api_resp.json()['href']
+
+  def upload_json(self, obj, file_path):
+    api_upload_url = self.get_upload_url(file_path)
+    json_str = json.dumps(obj, indent=2)
+    file_bytes = json_str.encode('UTF-8')
+
+    api_resp = requests.put(api_upload_url, data=file_bytes)
+
+    api_req_status_code = api_resp.status_code
+    if api_req_status_code != 201:
+      print(f'Error Yandex Disk API file uploading: '
+      f'HTTP request status code is {api_req_status_code}')
+      return 1
 
 class VKuser():
   api_url = 'https://api.vk.com/method'
@@ -87,6 +119,11 @@ class VKuser():
       print(f'Error VK API method {api_method}:\n'
       f'error code: {error_dict["error_code"]}\n'
       f'error message: {error_dict["error_msg"]}')
+      return
+
+    if len(api_resp.json()['response']) == 0:
+      print(f'Error VK API method {api_method}: '
+        f'VK screen name {screen_name} not found.')
       return
 
     type_object = api_resp.json()['response']['type']
@@ -215,6 +252,7 @@ class VKuser():
     album_count = 0
     for album in albums:
       album_count += 1
+      album_json = []
       album_name = album["title"]
       album_size = album['size']
       print(f'Альбом [{album_count}/{albums_amt}] {album_name}, {album_size} фото.')
@@ -246,7 +284,7 @@ class VKuser():
       # key is photo name, value is photo
       uniq_name_photos = dict()
       for photo in album_photos:
-        photo_name = photo['likes']['count']
+        photo_name = str(photo['likes']['count'])
         if photo_name in repeated_names_photos_1:
           repeated_names_photos_1[photo_name].append(photo)
         elif photo_name in uniq_name_photos.keys():
@@ -289,17 +327,25 @@ class VKuser():
           photo_sizes_types[photo_size['type']] = photo_size['url']
         for size_type in ('w', 'z', 'y', 'x', 'm', 's'):
           if size_type in photo_sizes_types.keys():
-            max_size_photo_url = photo_sizes_types[size_type]
+            photo_max_size_type = size_type
             break
-        photo_url = max_size_photo_url
-        file_path = f'{album_dir_path}/{file_name}'
+        album_json.append({
+          'file_name': file_name,
+          'size': photo_max_size_type
+        })
+        photo_url = photo_sizes_types[photo_max_size_type]
+        photo_file_path = f'{album_dir_path}/{file_name}'
         photo_count += 1
         print(f'\rЗагрузка в облако '
           f'фото [{photo_count}/{len(uniq_name_photos)}]...', end='')
-        if not cloud.upload_from_url(photo_url, file_path) is None:
+        if not cloud.upload_from_url(photo_url, photo_file_path) is None:
           return
-      # print('\nЗагрузка альбома в облако завершена.', end='\n\n')
-      print('\rЗагрузка альбома в облако завершена.', end='\n\n')
+      print('\rЗагрузка фотографий альбома в облако завершена.')
+      print('Создание в директории альбома json-файла... ', end='')
+      json_file_path = f'{album_dir_path}/{album_name}.json'
+      if not cloud.upload_json(album_json, json_file_path) is None:
+          return
+      print(f'OK: {json_file_path}', end='\n\n')
 
 def get_vk_user_id():
   vk_user_id = input('Введите ID или видимое имя пользователя VK: ')
